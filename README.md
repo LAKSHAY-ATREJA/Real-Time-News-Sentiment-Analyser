@@ -1,98 +1,65 @@
-# 📰 SentimentPulse – Real-Time News Sentiment Analyser
+# Real-Time News Sentiment Analyser
 
-A full-stack NLP application that fetches live news headlines for any stock, company, or topic and performs sentiment analysis — with an interactive dashboard showing scores, trends, keyword clouds, and article-level breakdowns.
+A full-stack NLP application that fetches live news headlines for any stock, company, or topic and performs sentiment analysis. The interactive dashboard shows per-article sentiment scores, an overall signal, a trend chart across dates, a keyword summary, and a positive/negative/neutral distribution. It works without any API key using realistic mock data.
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
-![Flask](https://img.shields.io/badge/Flask-3.0-black?logo=flask)
-![NLP](https://img.shields.io/badge/NLP-Lexicon%20%2B%20Rules-purple)
-![License](https://img.shields.io/badge/License-MIT-green)
+## How the sentiment engine works
 
----
+The sentiment module uses a domain-specific financial lexicon rather than a heavy transformer model, so it runs with no GPU and no large model download:
 
-## 🚀 Features
+1. Clean the headline and description (remove URLs, punctuation, lowercase)
+2. Tokenise into sentences
+3. Score each sentence against POSITIVE_WORDS and NEGATIVE_WORDS lexicons, applying negation detection (not, never, no) and intensity boosting (very, extremely, significantly)
+4. Average sentence scores and normalise to the range [-1, +1]
+5. Assign label: positive (score > 0.15), negative (score < -0.15), neutral otherwise
 
-- **Real-Time News** – Fetches latest headlines via NewsAPI (free tier)
-- **Financial NLP** – Domain-specific lexicon with negation handling & intensity boosting
-- **Sentiment Scoring** – Per-article score (-1 to +1) + overall signal
-- **Trend Chart** – Sentiment over time across fetched articles
-- **Distribution Doughnut** – Positive / Negative / Neutral breakdown
-- **Keyword Cloud** – Most frequent meaningful terms across all articles
-- **REST API** – `/api/analyse` and `/api/compare` endpoints
-- **Zero-dependency fallback** – Works with mock data when no API key is set
+## Features
 
----
+- Real-time news via NewsAPI (free tier) with a mock-data fallback when no key is provided
+- Per-article sentiment score and label
+- Aggregate signal, score distribution, trend over time, and top keywords
+- REST API at `/api/analyse` and `/api/compare`
+- Interactive Chart.js dashboard (line chart, doughnut, keyword display)
 
-## 🧠 How Sentiment Works
+## Requirements
 
-```
-Raw headline + description
-        ↓
-   Text cleaning (remove URLs, punctuation, lowercase)
-        ↓
-   Sentence tokenisation
-        ↓
-   Lexicon scoring per sentence
-   (POSITIVE_WORDS / NEGATIVE_WORDS)
-   + negation detection (not, never, no…)
-   + intensity boosting (very, extremely…)
-        ↓
-   Normalise avg score → [-1, +1]
-        ↓
-   Label: positive (>0.15) | neutral | negative (<-0.15)
-```
+- Python 3.10 or later
 
----
-
-## 📁 Project Structure
-
-```
-news-sentiment-analyser/
-├── app.py              # Flask app & REST API
-├── sentiment.py        # NLP engine + NewsAPI fetcher
-├── requirements.txt
-├── .env.example
-└── templates/
-    └── index.html      # Interactive dashboard (Chart.js)
-```
-
----
-
-## ⚙️ Setup & Run
+## Local setup
 
 ```bash
-# 1. Clone
-git clone https://github.com/YOUR_USERNAME/news-sentiment-analyser.git
-cd news-sentiment-analyser
+git clone https://github.com/LAKSHAY-ATREJA/Real-Time-News-Sentiment-Analyser.git
+cd Real-Time-News-Sentiment-Analyser
 
-# 2. Virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# 3. Install
+python3 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# 4. (Optional) Add NewsAPI key for live data
+# Optional: set your NewsAPI key for live headlines
 cp .env.example .env
-# Edit .env → NEWSAPI_KEY=your_key_here
-# Free key at https://newsapi.org
+# Edit .env and set NEWSAPI_KEY=your_key_here
 
-# 5. Run
 python app.py
-# → http://localhost:5000
 ```
 
-> Works **without** a NewsAPI key using realistic mock data.
+Open http://localhost:5000 in your browser.
 
----
+The app works immediately without a NewsAPI key — mock articles are generated automatically to demonstrate the full dashboard.
 
-## 🔌 API Reference
+## Environment variables
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/analyse?q=Apple` | Full sentiment analysis for a topic |
-| GET | `/api/compare?q=Apple,Tesla,Google` | Side-by-side comparison (up to 4) |
+| Variable    | Required | Description                                      |
+|-------------|----------|--------------------------------------------------|
+| NEWSAPI_KEY | No       | NewsAPI key from newsapi.org for live headlines  |
 
-### Example Response
+## API reference
+
+| Method | Endpoint                          | Description                              |
+|--------|-----------------------------------|------------------------------------------|
+| GET    | /api/analyse?q=Apple              | Full sentiment analysis for a topic      |
+| GET    | /api/compare?q=Apple,Tesla,Google | Side-by-side comparison (up to 4 topics) |
+
+Example response for /api/analyse:
+
 ```json
 {
   "query": "Apple",
@@ -104,37 +71,42 @@ python app.py
     "negative": 3,
     "neutral": 2,
     "top_keywords": ["earnings", "iphone", "revenue", "growth"],
-    "trend": [{"date": "2026-05-29", "avg_score": 0.31}]
+    "trend": [{"date": "2026-06-20", "avg_score": 0.31}]
   },
   "articles": [...]
 }
 ```
 
----
+## Project structure
 
-## 🛠️ Tech Stack
+```
+app.py              Flask server and REST endpoints
+sentiment.py        Lexicon-based NLP engine and NewsAPI fetcher
+templates/
+    index.html      Interactive dashboard (Chart.js, Vanilla JS)
+requirements.txt    Python dependencies
+.env.example        Template for environment variables
+```
 
-| Layer | Technology |
-|-------|------------|
-| NLP Engine | Custom financial lexicon, rule-based |
-| News Data | NewsAPI.org (free tier) |
-| Backend | Flask, Flask-CORS |
-| Frontend | Chart.js, Vanilla JS |
-| Deployment | Gunicorn |
+## Deployment to Render (free tier)
 
----
+1. Push this repository to GitHub
+2. Create a new Web Service on https://render.com
+3. Set the build command to `pip install -r requirements.txt`
+4. Set the start command to `gunicorn app:app`
+5. Add the NEWSAPI_KEY environment variable in the Render dashboard
+6. Deploy — the service is live in a few minutes
 
-## 🔮 Future Improvements
+## Tech stack
 
-- [ ] Swap lexicon for FinBERT transformer model
-- [ ] Twitter/X feed sentiment integration
-- [ ] Email alerts when sentiment crosses threshold
-- [ ] Historical sentiment database (SQLite)
-- [ ] Multi-topic comparison view
-- [ ] Deploy to Render
+| Component   | Technology                     |
+|-------------|--------------------------------|
+| NLP engine  | Custom financial lexicon       |
+| News data   | NewsAPI.org (free tier)        |
+| Backend     | Flask, Flask-CORS, Gunicorn    |
+| Frontend    | Chart.js, Vanilla JS           |
+| Language    | Python 3.10+                   |
 
----
+## License
 
-## 📄 License
-
-MIT © Lakshay Atreja
+MIT. Built by Lakshay Atreja.
