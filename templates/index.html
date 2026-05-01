@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>SentimentPulse – News Analyser</title>
+<title>SentimentPulse – News Sentiment Analyser</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
@@ -39,6 +39,7 @@ header{
   font-family:var(--ff-head);font-size:.85rem;font-weight:600;cursor:pointer;
   transition:opacity .2s}
 .btn:hover{opacity:.85}
+.btn:disabled{opacity:.5;cursor:not-allowed}
 
 /* layout */
 main{max-width:1280px;margin:0 auto;padding:2rem 2.5rem}
@@ -91,11 +92,17 @@ main{max-width:1280px;margin:0 auto;padding:2rem 2.5rem}
   border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:.5rem}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* error banner */
+.error-banner{
+  background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:12px;
+  color:var(--neg);padding:1rem 1.5rem;font-size:.875rem;line-height:1.5}
+
 @media(max-width:768px){
   .grid2{grid-template-columns:1fr}
   #hero{grid-template-columns:1fr}
   .big-score{font-size:3.5rem}
   header,main{padding:1rem 1.25rem}
+  .search-row input{width:150px}
 }
 </style>
 </head>
@@ -103,13 +110,14 @@ main{max-width:1280px;margin:0 auto;padding:2rem 2.5rem}
 <header>
   <div class="logo">SentimentPulse</div>
   <div class="search-row">
-    <input id="q" type="text" placeholder="AAPL, Tesla, Bitcoin…" value="Apple"/>
-    <button class="btn" onclick="run()">Analyse</button>
+    <input id="q" type="text" placeholder="AAPL, Tesla, Bitcoin..." value="Apple"
+           aria-label="Topic to analyse"/>
+    <button class="btn" id="analyseBtn" onclick="run()">Analyse</button>
   </div>
 </header>
 
 <main>
-  <div id="hero"><div class="ph">Enter a topic or stock to analyse sentiment</div></div>
+  <div id="hero"><div class="ph">Enter a topic or stock ticker to analyse sentiment</div></div>
 
   <div class="grid2">
     <div class="card"><h2>Sentiment Trend</h2><canvas id="trendChart" height="200"></canvas></div>
@@ -117,12 +125,12 @@ main{max-width:1280px;margin:0 auto;padding:2rem 2.5rem}
   </div>
 
   <div class="grid2">
-    <div class="card"><h2>Top Keywords</h2><div id="keywords" class="kw-cloud"><p class="ph" style="padding:1rem">–</p></div></div>
+    <div class="card"><h2>Top Keywords</h2><div id="keywords" class="kw-cloud"><p class="ph" style="padding:1rem">-</p></div></div>
     <div class="card"><h2>Score Guide</h2>
       <p style="font-size:.82rem;color:var(--muted);line-height:1.8">
-        <b style="color:var(--pos)">+0.15 → +1.0</b> &nbsp;Positive sentiment<br>
-        <b style="color:var(--neu)">-0.15 → +0.15</b> Neutral / mixed<br>
-        <b style="color:var(--neg)">-1.0 → -0.15</b> &nbsp;Negative sentiment<br><br>
+        <b style="color:var(--pos)">+0.15 to +1.0</b> &nbsp;Positive sentiment<br>
+        <b style="color:var(--neu)">-0.15 to +0.15</b> Neutral / mixed<br>
+        <b style="color:var(--neg)">-1.0 to -0.15</b> &nbsp;Negative sentiment<br><br>
         Scores are derived from a financial lexicon with negation handling and intensity boosting across all fetched headlines.
       </p>
     </div>
@@ -130,55 +138,79 @@ main{max-width:1280px;margin:0 auto;padding:2rem 2.5rem}
 
   <div class="card" style="margin-bottom:1.5rem">
     <h2>Articles</h2>
-    <div id="articles" class="article-list"><p class="ph">–</p></div>
+    <div id="articles" class="article-list"><p class="ph">-</p></div>
   </div>
 </main>
 
 <script>
-let trendChart, distChart;
+"use strict";
+
+let trendChart = null;
+let distChart = null;
+
+/** Escape a string so it is safe to insert into innerHTML. */
+function esc(str) {
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function cap(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function setLoading(on) {
+  const btn = document.getElementById("analyseBtn");
+  btn.disabled = on;
+  btn.textContent = on ? "Analysing..." : "Analyse";
+}
 
 async function run() {
   const q = document.getElementById("q").value.trim();
   if (!q) return;
-  setHeroLoading(q);
+
+  setLoading(true);
+  document.getElementById("hero").innerHTML =
+    `<div class="ph"><span class="spinner"></span>Analysing "${esc(q)}"...</div>`;
+
   try {
-    const r = await fetch(`/api/analyse?q=${encodeURIComponent(q)}`);
-    const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    renderHero(d);
-    renderTrend(d.summary.trend);
-    renderDist(d.summary);
-    renderKeywords(d.summary.top_keywords);
-    renderArticles(d.articles);
-  } catch(e) {
-    document.getElementById("hero").innerHTML = `<div class="ph">Error: ${e.message}</div>`;
+    const response = await fetch("/api/analyse?q=" + encodeURIComponent(q));
+    const data = await response.json();
+
+    if (data.error) throw new Error(data.error);
+
+    renderHero(data);
+    renderTrend(data.summary.trend);
+    renderDist(data.summary);
+    renderKeywords(data.summary.top_keywords);
+    renderArticles(data.articles);
+  } catch (err) {
+    document.getElementById("hero").innerHTML =
+      `<div class="error-banner">Error: ${esc(err.message)}</div>`;
+  } finally {
+    setLoading(false);
   }
 }
 
-function setHeroLoading(q) {
-  document.getElementById("hero").innerHTML =
-    `<div class="ph"><span class="spinner"></span>Analysing "${q}"…</div>`;
-}
-
 function renderHero(d) {
-  const s   = d.summary;
+  const s = d.summary;
   const cls = s.overall === "positive" ? "pos" : s.overall === "negative" ? "neg" : "neu";
-  const emoji = s.overall === "positive" ? "📈" : s.overall === "negative" ? "📉" : "➡️";
+  const sign = s.avg_score > 0 ? "+" : "";
   document.getElementById("hero").innerHTML = `
-    <div class="big-score ${cls}">${s.avg_score > 0 ? "+" : ""}${s.avg_score.toFixed(2)}</div>
+    <div class="big-score ${esc(cls)}">${sign}${s.avg_score.toFixed(2)}</div>
     <div class="hero-meta">
-      <h1>${emoji} ${d.query} — ${cap(s.overall)} Sentiment</h1>
-      <p>Based on ${s.total} articles · avg confidence derived from lexicon scoring</p>
+      <h1>${esc(d.query)} — ${esc(cap(s.overall))} Sentiment</h1>
+      <p>Based on ${s.total} articles. Score derived from lexicon-based analysis.</p>
       <div class="pill-row">
-        <span class="pill pos">▲ ${s.positive} Positive</span>
-        <span class="pill neg">▼ ${s.negative} Negative</span>
-        <span class="pill neu">● ${s.neutral} Neutral</span>
+        <span class="pill pos">${s.positive} Positive</span>
+        <span class="pill neg">${s.negative} Negative</span>
+        <span class="pill neu">${s.neutral} Neutral</span>
       </div>
     </div>`;
 }
 
 function renderTrend(trend) {
-  if (trendChart) trendChart.destroy();
+  if (trendChart) { trendChart.destroy(); trendChart = null; }
   const ctx = document.getElementById("trendChart").getContext("2d");
   trendChart = new Chart(ctx, {
     type: "line",
@@ -187,17 +219,21 @@ function renderTrend(trend) {
       datasets: [{
         label: "Avg Sentiment Score",
         data: trend.map(t => t.avg_score),
-        borderColor: "#e879f9", borderWidth: 2, pointRadius: 4,
+        borderColor: "#e879f9",
+        borderWidth: 2,
+        pointRadius: 4,
         pointBackgroundColor: trend.map(t => t.avg_score >= 0 ? "#22c55e" : "#ef4444"),
-        fill: true, backgroundColor: "rgba(232,121,249,.07)", tension: 0.4
+        fill: true,
+        backgroundColor: "rgba(232,121,249,.07)",
+        tension: 0.4
       }]
     },
-    options: opts()
+    options: chartOpts()
   });
 }
 
 function renderDist(s) {
-  if (distChart) distChart.destroy();
+  if (distChart) { distChart.destroy(); distChart = null; }
   const ctx = document.getElementById("distChart").getContext("2d");
   distChart = new Chart(ctx, {
     type: "doughnut",
@@ -205,61 +241,80 @@ function renderDist(s) {
       labels: ["Positive", "Negative", "Neutral"],
       datasets: [{
         data: [s.positive, s.negative, s.neutral],
-        backgroundColor: ["rgba(34,197,94,.7)","rgba(239,68,68,.7)","rgba(148,163,184,.4)"],
-        borderColor:     ["#22c55e","#ef4444","#94a3b8"],
+        backgroundColor: ["rgba(34,197,94,.7)", "rgba(239,68,68,.7)", "rgba(148,163,184,.4)"],
+        borderColor: ["#22c55e", "#ef4444", "#94a3b8"],
         borderWidth: 1.5
       }]
     },
     options: {
-      responsive: true, maintainAspectRatio: false,
+      responsive: true,
+      maintainAspectRatio: false,
       plugins: {
-        legend: { labels: { color:"#555570", font:{ family:"Syne", size:11 } } },
-        tooltip: { backgroundColor:"#141420", borderColor:"#1e1e30", borderWidth:1,
-                   titleColor:"#f1f1f8", bodyColor:"#555570" }
+        legend: { labels: { color: "#555570", font: { family: "Syne", size: 11 } } },
+        tooltip: {
+          backgroundColor: "#141420", borderColor: "#1e1e30", borderWidth: 1,
+          titleColor: "#f1f1f8", bodyColor: "#555570"
+        }
       }
     }
   });
 }
 
 function renderKeywords(kw) {
-  document.getElementById("keywords").innerHTML =
-    kw.map(w => `<span class="kw">${w}</span>`).join("") || "<p class='ph' style='padding:.5rem'>None</p>";
+  const el = document.getElementById("keywords");
+  if (!kw || kw.length === 0) {
+    el.innerHTML = "<p class='ph' style='padding:.5rem'>None detected</p>";
+    return;
+  }
+  el.innerHTML = kw.map(w => `<span class="kw">${esc(w)}</span>`).join("");
 }
 
 function renderArticles(articles) {
-  document.getElementById("articles").innerHTML =
-    articles.map(a => {
-      const cls = a.label === "positive" ? "pos" : a.label === "negative" ? "neg" : "neu";
-      const sign = a.score > 0 ? "+" : "";
-      return `<div class="article-item">
-        <div>
-          <div class="atitle">${a.title}</div>
-          <div class="ameta">${a.source} · ${a.published} · ${a.sentences} sentences
-            ${a.url !== "#" ? `· <a href="${a.url}" target="_blank">Read →</a>` : ""}
-          </div>
-        </div>
-        <div class="score-dot ${cls}">${sign}${a.score.toFixed(2)}</div>
-      </div>`;
-    }).join("") || "<p class='ph'>No articles found</p>";
+  const el = document.getElementById("articles");
+  if (!articles || articles.length === 0) {
+    el.innerHTML = "<p class='ph'>No articles found</p>";
+    return;
+  }
+  el.innerHTML = articles.map(a => {
+    const cls = a.label === "positive" ? "pos" : a.label === "negative" ? "neg" : "neu";
+    const sign = a.score > 0 ? "+" : "";
+    const readLink = (a.url && a.url !== "#")
+      ? ` &middot; <a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">Read</a>`
+      : "";
+    return `<div class="article-item">
+      <div>
+        <div class="atitle">${esc(a.title)}</div>
+        <div class="ameta">${esc(a.source)} &middot; ${esc(a.published)} &middot; ${a.sentences} sentence${a.sentences !== 1 ? "s" : ""}${readLink}</div>
+      </div>
+      <div class="score-dot ${cls}">${sign}${a.score.toFixed(2)}</div>
+    </div>`;
+  }).join("");
 }
 
-function opts() {
+function chartOpts() {
   return {
-    responsive: true, maintainAspectRatio: false,
+    responsive: true,
+    maintainAspectRatio: false,
     plugins: {
-      legend: { labels: { color:"#555570", font:{ family:"Syne", size:11 } } },
-      tooltip: { backgroundColor:"#141420", borderColor:"#1e1e30", borderWidth:1,
-                 titleColor:"#f1f1f8", bodyColor:"#555570" }
+      legend: { labels: { color: "#555570", font: { family: "Syne", size: 11 } } },
+      tooltip: {
+        backgroundColor: "#141420", borderColor: "#1e1e30", borderWidth: 1,
+        titleColor: "#f1f1f8", bodyColor: "#555570"
+      }
     },
     scales: {
-      x: { ticks:{ color:"#555570", font:{ family:"Syne", size:10 } }, grid:{ display:false } },
-      y: { ticks:{ color:"#555570", font:{ family:"Syne", size:10 } }, grid:{ color:"rgba(255,255,255,.04)" } }
+      x: { ticks: { color: "#555570", font: { family: "Syne", size: 10 } }, grid: { display: false } },
+      y: { ticks: { color: "#555570", font: { family: "Syne", size: 10 } }, grid: { color: "rgba(255,255,255,.04)" } }
     }
   };
 }
 
-function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+// Allow pressing Enter to trigger analysis
+document.getElementById("q").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") run();
+});
 
+// Run analysis on page load with the default value
 window.addEventListener("DOMContentLoaded", run);
 </script>
 </body>
